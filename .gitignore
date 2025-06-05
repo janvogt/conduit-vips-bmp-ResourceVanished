@@ -1,2 +1,3 @@
-*.png
 .direnv
+blob
+blob.head

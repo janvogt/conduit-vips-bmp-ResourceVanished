@@ -6,9 +6,9 @@
       in {
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
-            vips
+            coreutils
             (haskellPackages.ghcWithPackages
-              (ps: with ps; [ bytestring conduit conduit-extra ]))
+              (ps: with ps; [ conduit conduit-extra ]))
             ghcid
             haskell-language-server
           ];
