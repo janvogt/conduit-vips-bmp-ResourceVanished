@@ -2,7 +2,8 @@ module Repro where
 
 import Conduit
 import Control.Concurrent.Async (Concurrently (..), runConcurrently)
-import Control.Exception (SomeException (..), finally, onException, throw, try)
+import Control.Exception
+import Control.Exception.Base
 import Control.Monad
 import Control.Monad.IO.Unlift (unliftIO, withUnliftIO)
 import Data.ByteString (ByteString)
@@ -22,6 +23,7 @@ import GHC.IO.FD qualified as FD
 import GHC.IO.Handle.Internals (addHandleFinalizer, hClose_impl, handleFinalizer, mkDuplexHandleNoFinalizer, mkFileHandleNoFinalizer)
 import System.IO
 import System.IO qualified as IO
+import System.IO.Error (ioeGetErrorType, isResourceVanishedErrorType)
 
 main :: IO ()
 main = do
@@ -102,7 +104,9 @@ sourceProcessWithStreams' cp producerStdin consumerStdout consumerStderr =
     (_, resStdout, resStderr) <-
       runConcurrently
         ( (,,)
-            <$> Concurrently ((unliftIO u $ runConduit $ producerStdin .| sinkStdin) `finally` closeStdin)
+            <$> Concurrently
+              ( (unliftIO u (runConduit $ producerStdin .| sinkStdin) `finally` closeStdin `catch` handle_vanished)
+              )
             <*> Concurrently (unliftIO u $ runConduit $ sourceStdout .| consumerStdout)
             <*> Concurrently (unliftIO u $ runConduit $ sourceStderr .| consumerStderr)
         )
@@ -110,6 +114,9 @@ sourceProcessWithStreams' cp producerStdin consumerStdout consumerStderr =
         `onException` terminateStreamingProcess sph
     ec <- waitForStreamingProcess sph
     return (ec, resStdout, resStderr)
+  where
+    handle_vanished (e :: IOError) =
+      if isResourceVanishedErrorType (ioeGetErrorType e) then pure () else throwIO e
 
 terminateStreamingProcess :: (MonadIO m) => StreamingProcessHandle -> m ()
 terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRaw
