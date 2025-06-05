@@ -105,7 +105,7 @@ sourceProcessWithStreams' cp producerStdin consumerStdout consumerStderr =
       runConcurrently
         ( (,,)
             <$> Concurrently
-              ( (unliftIO u (runConduit $ producerStdin .| sinkStdin) `finally` closeStdin `catch` handle_vanished)
+              ( (unliftIO u (runConduit $ producerStdin .| (sinkStdin `catchC` handle_vanished)) `finally` (closeStdin `catch` handle_vanished))
               )
             <*> Concurrently (unliftIO u $ runConduit $ sourceStdout .| consumerStdout)
             <*> Concurrently (unliftIO u $ runConduit $ sourceStderr .| consumerStderr)
@@ -115,8 +115,9 @@ sourceProcessWithStreams' cp producerStdin consumerStdout consumerStderr =
     ec <- waitForStreamingProcess sph
     return (ec, resStdout, resStderr)
   where
-    handle_vanished (e :: IOError) =
-      if isResourceVanishedErrorType (ioeGetErrorType e) then pure () else throwIO e
+    handle_vanished :: forall m. (MonadIO m) => IOError -> m ()
+    handle_vanished e =
+      if isResourceVanishedErrorType (ioeGetErrorType e) then pure () else liftIO (throwIO e)
 
 terminateStreamingProcess :: (MonadIO m) => StreamingProcessHandle -> m ()
 terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRaw
